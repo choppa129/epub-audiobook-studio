@@ -24,13 +24,13 @@ $("#toggleKey").addEventListener("click", () => {
   input.type = input.type === "password" ? "text" : "password";
   $("#toggleKey").textContent = input.type === "password" ? "Show" : "Hide";
 });
-$("#apiKey").addEventListener("input", (event) => sessionStorage.setItem("soundleaf-api-key", event.target.value));
-$("#apiKey").value = sessionStorage.getItem("soundleaf-api-key") || "";
+$("#apiKey").addEventListener("input", (event) => sessionStorage.setItem("soundleaf-gemini-api-key", event.target.value));
+$("#apiKey").value = sessionStorage.getItem("soundleaf-gemini-api-key") || "";
 ["baseUrl", "model", "voice", "instructions"].forEach((id) => {
   const el = $("#" + id);
-  const saved = localStorage.getItem("soundleaf-" + id);
+  const saved = localStorage.getItem("soundleaf-gemini-" + id);
   if (saved) el.value = saved;
-  el.addEventListener("change", () => localStorage.setItem("soundleaf-" + id, el.value));
+  el.addEventListener("change", () => localStorage.setItem("soundleaf-gemini-" + id, el.value));
 });
 
 $("#selectAll").addEventListener("change", (event) => {
@@ -136,7 +136,7 @@ async function generateAudiobook() {
     }
     for (const chapterIndex of selectedIndexes) {
       const chapter = state.chapters[chapterIndex];
-      const blob = new Blob(pieces.get(chapterIndex), { type: "audio/mpeg" });
+      const blob = await mergeWavBlobs(pieces.get(chapterIndex));
       state.outputs.push({ index: chapterIndex, title: chapter.title, blob, url: URL.createObjectURL(blob) });
     }
     updateProgress(jobs.length, jobs.length, "All chapters have been generated");
@@ -152,12 +152,21 @@ async function generateAudiobook() {
 
 async function synthesize(input, key, signal) {
   const baseUrl = $("#baseUrl").value.trim().replace(/\/$/, "");
-  const body = { model: $("#model").value.trim(), voice: $("#voice").value, input, response_format: "mp3" };
+  const model = $("#model").value.trim();
+  const part = { text: input };
   const instructions = $("#instructions").value.trim();
-  if (instructions) body.instructions = instructions;
-  const response = await fetch(`${baseUrl}/audio/speech`, {
+  if (instructions) part.speech_metadata = { style: instructions };
+  const body = {
+    contents: [{ role: "user", parts: [part] }],
+    generationConfig: {
+      responseModalities: ["AUDIO"],
+      responseFormat: { audio: { mimeType: "AUDIO_WAV", sampleRate: 24000 } },
+      speechConfig: { voiceConfig: { voice: $("#voice").value } },
+    },
+  };
+  const response = await fetch(`${baseUrl}/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST", signal,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -165,16 +174,19 @@ async function synthesize(input, key, signal) {
     try { const data = await response.json(); message = data.error?.message || message; } catch {}
     throw new Error(message);
   }
-  return response.blob();
+  const data = await response.json();
+  const audio = data.candidates?.[0]?.content?.parts?.find((item) => item.inlineData)?.inlineData;
+  if (!audio?.data) throw new Error("Gemini returned no audio. Check the model, voice, and content safety response.");
+  return base64ToBlob(audio.data, audio.mimeType || "audio/wav");
 }
 
 function renderResults() {
-  $("#resultSummary").textContent = `${state.outputs.length} chapters generated. Preview them, download individual MP3s, or save the complete ZIP.`;
+  $("#resultSummary").textContent = `${state.outputs.length} chapters generated. Preview them, download individual WAV files, or save the complete ZIP.`;
   $("#audioList").innerHTML = state.outputs.map((item, i) => `
     <div class="audio-item">
       <strong>${escapeHtml(item.title)}</strong>
       <audio controls src="${item.url}"></audio>
-      <a href="${item.url}" download="${filename(i + 1, item.title)}.mp3">Download MP3</a>
+      <a href="${item.url}" download="${filename(i + 1, item.title)}.wav">Download WAV</a>
     </div>`).join("");
   $("#resultCard").classList.remove("hidden");
   $("#resultCard").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -184,7 +196,7 @@ async function downloadZip() {
   if (!state.outputs.length) return;
   toast("Creating ZIP…");
   const zip = new JSZip();
-  state.outputs.forEach((item, i) => zip.file(`${filename(i + 1, item.title)}.mp3`, item.blob));
+  state.outputs.forEach((item, i) => zip.file(`${filename(i + 1, item.title)}.wav`, item.blob));
   zip.file("README.txt", `${state.book.title}\n${state.book.author}\n\nGenerated with SoundLeaf.`);
   const blob = await zip.generateAsync({ type: "blob" });
   downloadBlob(blob, `${safeName(state.book.title)}-audiobook.zip`);
@@ -217,6 +229,54 @@ function splitText(text) {
   if (current.trim()) chunks.push(current.trim());
   return chunks;
 }
+function base64ToBlob(base64, mimeType) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+async function mergeWavBlobs(blobs) {
+  if (blobs.length === 1) return blobs[0];
+  const chunks = [];
+  let format = null;
+  for (const blob of blobs) {
+    const buffer = await blob.arrayBuffer();
+    const view = new DataView(buffer);
+    if (readAscii(view, 0, 4) !== "RIFF" || readAscii(view, 8, 4) !== "WAVE") throw new Error("Gemini returned an unsupported audio format");
+    let offset = 12;
+    let currentFormat = null;
+    let pcm = null;
+    while (offset + 8 <= view.byteLength) {
+      const id = readAscii(view, offset, 4);
+      const size = view.getUint32(offset + 4, true);
+      const start = offset + 8;
+      if (id === "fmt ") currentFormat = {
+        audioFormat: view.getUint16(start, true), channels: view.getUint16(start + 2, true),
+        sampleRate: view.getUint32(start + 4, true), byteRate: view.getUint32(start + 8, true),
+        blockAlign: view.getUint16(start + 12, true), bitsPerSample: view.getUint16(start + 14, true),
+      };
+      if (id === "data") pcm = new Uint8Array(buffer, start, Math.min(size, buffer.byteLength - start));
+      offset = start + size + (size % 2);
+    }
+    if (!currentFormat || !pcm) throw new Error("Could not read Gemini WAV audio");
+    if (!format) format = currentFormat;
+    if (JSON.stringify(format) !== JSON.stringify(currentFormat)) throw new Error("Gemini returned mismatched WAV formats between segments");
+    chunks.push(new Uint8Array(pcm));
+  }
+  const dataSize = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const output = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(output);
+  writeAscii(view, 0, "RIFF"); view.setUint32(4, 36 + dataSize, true); writeAscii(view, 8, "WAVE");
+  writeAscii(view, 12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, format.audioFormat, true);
+  view.setUint16(22, format.channels, true); view.setUint32(24, format.sampleRate, true); view.setUint32(28, format.byteRate, true);
+  view.setUint16(32, format.blockAlign, true); view.setUint16(34, format.bitsPerSample, true);
+  writeAscii(view, 36, "data"); view.setUint32(40, dataSize, true);
+  const bytes = new Uint8Array(output); let cursor = 44;
+  for (const chunk of chunks) { bytes.set(chunk, cursor); cursor += chunk.length; }
+  return new Blob([output], { type: "audio/wav" });
+}
+function readAscii(view, offset, length) { return String.fromCharCode(...new Uint8Array(view.buffer, offset, length)); }
+function writeAscii(view, offset, text) { [...text].forEach((char, i) => view.setUint8(offset + i, char.charCodeAt(0))); }
 function resolveZipPath(base, relative) {
   const parts = (base + decodeURIComponent(relative)).split("/"); const output = [];
   for (const part of parts) { if (!part || part === ".") continue; if (part === "..") output.pop(); else output.push(part); }
