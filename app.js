@@ -22,7 +22,7 @@ dropZone.addEventListener("drop", (event) => {
 $("#toggleKey").addEventListener("click", () => {
   const input = $("#apiKey");
   input.type = input.type === "password" ? "text" : "password";
-  $("#toggleKey").textContent = input.type === "password" ? "显示" : "隐藏";
+  $("#toggleKey").textContent = input.type === "password" ? "Show" : "Hide";
 });
 $("#apiKey").addEventListener("input", (event) => sessionStorage.setItem("soundleaf-api-key", event.target.value));
 $("#apiKey").value = sessionStorage.getItem("soundleaf-api-key") || "";
@@ -42,17 +42,17 @@ $("#cancel").addEventListener("click", () => state.controller?.abort());
 $("#downloadZip").addEventListener("click", downloadZip);
 
 async function loadEpub(file) {
-  if (!file.name.toLowerCase().endsWith(".epub")) return toast("请选择 .epub 文件");
+  if (!file.name.toLowerCase().endsWith(".epub")) return toast("Please choose an .epub file");
   try {
-    toast("正在解析 EPUB…");
+    toast("Parsing EPUB…");
     const zip = await JSZip.loadAsync(file);
     const container = parseXml(await zip.file("META-INF/container.xml").async("text"));
     const opfPath = container.querySelector("rootfile")?.getAttribute("full-path");
-    if (!opfPath || !zip.file(opfPath)) throw new Error("没有找到 EPUB 内容清单");
+    if (!opfPath || !zip.file(opfPath)) throw new Error("Could not find the EPUB content manifest");
     const opf = parseXml(await zip.file(opfPath).async("text"));
     const base = opfPath.includes("/") ? opfPath.slice(0, opfPath.lastIndexOf("/") + 1) : "";
     const title = nodeText(opf, "title") || file.name.replace(/\.epub$/i, "");
-    const author = nodeText(opf, "creator") || "未知作者";
+    const author = nodeText(opf, "creator") || "Unknown author";
     const manifest = new Map([...opf.querySelectorAll("manifest item")].map((item) => [item.getAttribute("id"), item.getAttribute("href")]));
     const spine = [...opf.querySelectorAll("spine itemref")].map((item) => item.getAttribute("idref"));
     const chapters = [];
@@ -67,29 +67,29 @@ async function loadEpub(file) {
       const heading = doc.querySelector("h1, h2, h3, title")?.textContent?.trim();
       const text = cleanText(doc.body?.textContent || "");
       if (text.length < 20) continue;
-      chapters.push({ title: heading || `第 ${chapters.length + 1} 章`, text, selected: true });
+      chapters.push({ title: heading || `Chapter ${chapters.length + 1}`, text, selected: true });
     }
-    if (!chapters.length) throw new Error("没有识别到可朗读章节");
+    if (!chapters.length) throw new Error("No readable chapters were found");
     state.book = { title, author, filename: file.name };
     state.chapters = chapters;
     state.outputs.forEach((item) => URL.revokeObjectURL(item.url));
     state.outputs = [];
     renderBook();
-    toast(`已识别 ${chapters.length} 个章节`);
+    toast(`Found ${chapters.length} chapters`);
   } catch (error) {
     console.error(error);
-    toast(`解析失败：${error.message}`);
+    toast(`Could not parse this EPUB: ${error.message}`);
   }
 }
 
 function renderBook() {
   $("#bookTitle").textContent = state.book.title;
-  $("#bookMeta").textContent = `${state.book.author} · ${state.chapters.length} 个章节`;
+  $("#bookMeta").textContent = `${state.book.author} · ${state.chapters.length} chapters`;
   chapterList.innerHTML = state.chapters.map((chapter, index) => `
     <div class="chapter">
       <input class="chapter-check" type="checkbox" data-index="${index}" checked />
-      <div><div class="chapter-title">${escapeHtml(chapter.title)}</div><div class="chapter-meta">${chapter.text.length.toLocaleString()} 字符</div></div>
-      <button class="chapter-preview" data-preview="${index}">预览文字</button>
+      <div><div class="chapter-title">${escapeHtml(chapter.title)}</div><div class="chapter-meta">${chapter.text.length.toLocaleString()} characters</div></div>
+      <button class="chapter-preview" data-preview="${index}">Preview text</button>
     </div>`).join("");
   chapterList.querySelectorAll(".chapter-check").forEach((box) => box.addEventListener("change", updateSelection));
   chapterList.querySelectorAll("[data-preview]").forEach((button) => button.addEventListener("click", () => {
@@ -106,7 +106,7 @@ function renderBook() {
 function updateSelection() {
   const checks = [...document.querySelectorAll(".chapter-check")];
   const selected = checks.filter((box) => box.checked);
-  $("#selectedSummary").textContent = `已选择 ${selected.length}/${checks.length}`;
+  $("#selectedSummary").textContent = `${selected.length} of ${checks.length} selected`;
   $("#selectAll").checked = checks.length > 0 && selected.length === checks.length;
   $("#selectAll").indeterminate = selected.length > 0 && selected.length < checks.length;
   generateButton.disabled = selected.length === 0;
@@ -114,9 +114,9 @@ function updateSelection() {
 
 async function generateAudiobook() {
   const key = $("#apiKey").value.trim();
-  if (!key) return toast("请先填写 API Key");
+  if (!key) return toast("Enter your API key first");
   const selectedIndexes = [...document.querySelectorAll(".chapter-check:checked")].map((box) => Number(box.dataset.index));
-  if (!selectedIndexes.length) return toast("请至少选择一个章节");
+  if (!selectedIndexes.length) return toast("Select at least one chapter");
   state.controller = new AbortController();
   state.outputs.forEach((item) => URL.revokeObjectURL(item.url));
   state.outputs = [];
@@ -129,7 +129,7 @@ async function generateAudiobook() {
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
       const chapter = state.chapters[job.chapterIndex];
-      updateProgress(i, jobs.length, `${chapter.title}${job.partCount > 1 ? ` · 片段 ${job.partIndex + 1}/${job.partCount}` : ""}`);
+      updateProgress(i, jobs.length, `${chapter.title}${job.partCount > 1 ? ` · Part ${job.partIndex + 1}/${job.partCount}` : ""}`);
       const blob = await synthesize(job.text, key, state.controller.signal);
       if (!pieces.has(job.chapterIndex)) pieces.set(job.chapterIndex, []);
       pieces.get(job.chapterIndex).push(blob);
@@ -139,11 +139,11 @@ async function generateAudiobook() {
       const blob = new Blob(pieces.get(chapterIndex), { type: "audio/mpeg" });
       state.outputs.push({ index: chapterIndex, title: chapter.title, blob, url: URL.createObjectURL(blob) });
     }
-    updateProgress(jobs.length, jobs.length, "全部章节生成完成");
+    updateProgress(jobs.length, jobs.length, "All chapters have been generated");
     renderResults();
   } catch (error) {
-    if (error.name === "AbortError") toast("已停止生成");
-    else { console.error(error); toast(`生成失败：${error.message}`); }
+    if (error.name === "AbortError") toast("Generation stopped");
+    else { console.error(error); toast(`Generation failed: ${error.message}`); }
   } finally {
     setGenerating(false);
     state.controller = null;
@@ -169,12 +169,12 @@ async function synthesize(input, key, signal) {
 }
 
 function renderResults() {
-  $("#resultSummary").textContent = `已生成 ${state.outputs.length} 个章节，可以试听、单独下载或打包下载。`;
+  $("#resultSummary").textContent = `${state.outputs.length} chapters generated. Preview them, download individual MP3s, or save the complete ZIP.`;
   $("#audioList").innerHTML = state.outputs.map((item, i) => `
     <div class="audio-item">
       <strong>${escapeHtml(item.title)}</strong>
       <audio controls src="${item.url}"></audio>
-      <a href="${item.url}" download="${filename(i + 1, item.title)}.mp3">下载 MP3</a>
+      <a href="${item.url}" download="${filename(i + 1, item.title)}.mp3">Download MP3</a>
     </div>`).join("");
   $("#resultCard").classList.remove("hidden");
   $("#resultCard").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -182,10 +182,10 @@ function renderResults() {
 
 async function downloadZip() {
   if (!state.outputs.length) return;
-  toast("正在打包…");
+  toast("Creating ZIP…");
   const zip = new JSZip();
   state.outputs.forEach((item, i) => zip.file(`${filename(i + 1, item.title)}.mp3`, item.blob));
-  zip.file("README.txt", `${state.book.title}\n${state.book.author}\n\n由 SoundLeaf 生成。`);
+  zip.file("README.txt", `${state.book.title}\n${state.book.author}\n\nGenerated with SoundLeaf.`);
   const blob = await zip.generateAsync({ type: "blob" });
   downloadBlob(blob, `${safeName(state.book.title)}-audiobook.zip`);
 }
@@ -199,7 +199,7 @@ function updateProgress(done, total, detail) {
   const percent = total ? Math.round((done / total) * 100) : 0;
   $("#progressPercent").textContent = `${percent}%`;
   $("#progressBar").style.width = `${percent}%`;
-  $("#progressTitle").textContent = done === total ? "生成完成" : "正在生成音频";
+  $("#progressTitle").textContent = done === total ? "Generation complete" : "Generating audio";
   $("#progressDetail").textContent = detail;
 }
 function splitText(text) {
