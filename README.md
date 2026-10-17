@@ -10,6 +10,7 @@ SoundLeaf is a browser-based EPUB-to-audiobook studio. It parses EPUB files loca
 - Supports Gemini voices and controllable reading-style instructions
 - Automatically splits long chapters into API-friendly segments
 - Generates chapters sequentially with live progress and cancellation
+- Automatically waits and retries when the Gemini free-tier rate limit is reached
 - Provides in-browser playback and individual WAV downloads
 - Packages all completed chapters into a ZIP archive
 - Keeps the API key in `sessionStorage` only, so it is cleared when the tab closes
@@ -51,6 +52,7 @@ The repository includes a GitHub Pages workflow. Push to `main`, then choose **G
 - The first release exports chapter WAV files and a ZIP archive. MP3 and M4B export are planned for a later release.
 - EPUB formatting varies widely, so complex books may need additional cleanup rules.
 - Long chapters are split for generation, then their PCM data is merged into a valid WAV file in the browser.
+- Free-tier generation can be slow because Gemini may allow only a few TTS requests per rate-limit window. SoundLeaf follows the API's requested retry delay automatically.
 
 Use SoundLeaf only with books and other content you own or are authorized to convert.
 
