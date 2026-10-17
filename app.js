@@ -1,6 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 const state = { book: null, chapters: [], outputs: [], controller: null };
-const MAX_CHARS = 3600;
+const SAFE_INPUT_TOKENS = 7200;
+const SAFE_AUDIO_SECONDS = 480;
 
 const fileInput = $("#fileInput");
 const dropZone = $("#dropZone");
@@ -123,7 +124,7 @@ async function generateAudiobook() {
   setGenerating(true);
   $("#progressCard").classList.remove("hidden");
   $("#resultCard").classList.add("hidden");
-  const jobs = selectedIndexes.flatMap((chapterIndex) => splitText(state.chapters[chapterIndex].text).map((text, partIndex, parts) => ({ chapterIndex, partIndex, partCount: parts.length, text })));
+  const jobs = selectedIndexes.flatMap((chapterIndex) => splitChapter(state.chapters[chapterIndex].text).map((text, partIndex, parts) => ({ chapterIndex, partIndex, partCount: parts.length, text })));
   try {
     const pieces = new Map();
     for (let i = 0; i < jobs.length; i++) {
@@ -243,20 +244,67 @@ function updateProgress(done, total, detail) {
   $("#progressTitle").textContent = done === total ? "Generation complete" : "Generating audio";
   $("#progressDetail").textContent = detail;
 }
-function splitText(text) {
-  if (text.length <= MAX_CHARS) return [text];
-  const sentences = text.split(/(?<=[。！？.!?])\s*/u);
-  const chunks = []; let current = "";
-  for (const sentence of sentences) {
-    if (current && current.length + sentence.length > MAX_CHARS) { chunks.push(current.trim()); current = ""; }
-    if (sentence.length > MAX_CHARS) {
-      if (current) chunks.push(current.trim());
-      for (let i = 0; i < sentence.length; i += MAX_CHARS) chunks.push(sentence.slice(i, i + MAX_CHARS));
+function splitChapter(text) {
+  if (fitsGeminiLimits(text)) return [text];
+  const units = text.split(/(?<=\n)|(?<=[。！？.!?；;])\s*/u).filter((unit) => unit.trim());
+  const chunks = [];
+  let current = "";
+  for (const unit of units) {
+    const candidate = current ? `${current}${current.endsWith("\n") ? "" : " "}${unit}` : unit;
+    if (current && !fitsGeminiLimits(candidate)) {
+      chunks.push(current.trim());
       current = "";
-    } else current += sentence + " ";
+    }
+    if (!fitsGeminiLimits(unit)) {
+      if (current.trim()) chunks.push(current.trim());
+      chunks.push(...splitOversizedUnit(unit));
+    } else {
+      current = current ? `${current}${current.endsWith("\n") ? "" : " "}${unit}` : unit;
+    }
   }
   if (current.trim()) chunks.push(current.trim());
   return chunks;
+}
+
+function splitOversizedUnit(text) {
+  const chunks = [];
+  let remaining = text.trim();
+  while (remaining) {
+    let low = 1;
+    let high = remaining.length;
+    let best = 1;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      if (fitsGeminiLimits(remaining.slice(0, middle))) { best = middle; low = middle + 1; }
+      else high = middle - 1;
+    }
+    let cut = best;
+    const naturalBreak = Math.max(
+      remaining.lastIndexOf("\n", best), remaining.lastIndexOf(" ", best),
+      remaining.lastIndexOf("，", best), remaining.lastIndexOf(",", best),
+    );
+    if (naturalBreak > best * 0.65) cut = naturalBreak + 1;
+    chunks.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+  return chunks.filter(Boolean);
+}
+
+function fitsGeminiLimits(text) {
+  return estimateInputTokens(text) <= SAFE_INPUT_TOKENS && estimateSpeechSeconds(text) <= SAFE_AUDIO_SECONDS;
+}
+
+function estimateInputTokens(text) {
+  const cjk = (text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu) || []).length;
+  const other = Math.max(0, text.length - cjk);
+  return Math.ceil(cjk * 1.15 + other / 3.6);
+}
+
+function estimateSpeechSeconds(text) {
+  const cjk = (text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu) || []).length;
+  const nonCjk = text.replace(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu, " ");
+  const words = (nonCjk.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) || []).length;
+  return cjk / 4.2 + words / 2.5;
 }
 function base64ToBlob(base64, mimeType) {
   const binary = atob(base64);
