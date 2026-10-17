@@ -21,7 +21,7 @@
       <section class="hero">
         <p class="eyebrow">EPUB → AUDIOBOOK</p>
         <h1>Let every book<br /><em>find its voice.</em></h1>
-        <p class="lead">Upload an EPUB, review its chapters, and use your own text-to-speech API to create downloadable MP3s. Your book is never uploaded to our server.</p>
+        <p class="lead">Upload an EPUB, review its chapters, and use your own Gemini API key to create downloadable WAV audiobooks. Your book is never uploaded to our server.</p>
       </section>
 
       <section class="workspace">
@@ -56,33 +56,39 @@
           <span class="step-number">02</span>
           <h2>Voice settings</h2>
           <label class="field">
-            <span>API endpoint</span>
-            <input id="baseUrl" value="https://api.openai.com/v1" spellcheck="false" />
+            <span>Gemini API endpoint</span>
+            <input id="baseUrl" value="https://generativelanguage.googleapis.com/v1beta" spellcheck="false" />
           </label>
           <label class="field">
-            <span>API key <small>kept only in this tab</small></span>
+            <span>Gemini API key <small>kept only in this tab</small></span>
             <div class="secret-wrap">
-              <input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" />
+              <input id="apiKey" type="password" placeholder="Enter your Google AI Studio key" autocomplete="off" />
               <button id="toggleKey" aria-label="Show or hide API key">Show</button>
             </div>
           </label>
           <div class="field-row">
             <label class="field">
               <span>Model</span>
-              <input id="model" value="gpt-4o-mini-tts" />
+              <select id="model">
+                <option value="gemini-3.8-flash-lite-tts">Gemini 3.8 Flash-Lite TTS</option>
+                <option value="gemini-3.8-flash-tts">Gemini 3.8 Flash TTS</option>
+              </select>
             </label>
             <label class="field">
               <span>Voice</span>
               <select id="voice">
-                <option value="alloy">Alloy</option>
-                <option value="ash">Ash</option>
-                <option value="coral">Coral</option>
-                <option value="echo">Echo</option>
-                <option value="fable">Fable</option>
-                <option value="nova">Nova</option>
-                <option value="onyx">Onyx</option>
-                <option value="sage">Sage</option>
-                <option value="shimmer">Shimmer</option>
+                <option value="Kore">Kore</option>
+                <option value="Puck">Puck</option>
+                <option value="Charon">Charon</option>
+                <option value="Zephyr">Zephyr</option>
+                <option value="Aoede">Aoede</option>
+                <option value="Fenrir">Fenrir</option>
+                <option value="Leda">Leda</option>
+                <option value="Orus">Orus</option>
+                <option value="Achird">Achird</option>
+                <option value="Enceladus">Enceladus</option>
+                <option value="Sadachbia">Sadachbia</option>
+                <option value="Schedar">Schedar</option>
               </select>
             </label>
           </div>
@@ -92,7 +98,7 @@
           </label>
           <button class="primary wide" id="generate" disabled>Generate selected chapters</button>
           <button class="secondary wide hidden" id="cancel">Stop generation</button>
-          <p class="fine-print">Your API key is sent directly from your browser to the selected speech service. It is never written to the code or stored permanently.</p>
+          <p class="fine-print">Your API key and selected chapter text are sent directly from your browser to the official Gemini API. The key is never written to the code or stored permanently.</p>
         </aside>
       </section>
 
