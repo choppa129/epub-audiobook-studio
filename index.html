@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="在浏览器中把 EPUB 转换为分章节有声书。" />
-    <title>声页 · EPUB 有声书工坊</title>
+    <meta name="description" content="Turn EPUB files into downloadable, chapter-based audiobooks in your browser." />
+    <title>SoundLeaf · EPUB Audiobook Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -13,15 +13,15 @@
   <body>
     <div class="grain"></div>
     <header class="topbar">
-      <a class="brand" href="#">声页 <span>SoundLeaf</span></a>
-      <div class="privacy-pill"><i></i> EPUB 仅在本地解析</div>
+      <a class="brand" href="#">SoundLeaf <span>Audiobook Studio</span></a>
+      <div class="privacy-pill"><i></i> EPUB stays in your browser</div>
     </header>
 
     <main>
       <section class="hero">
         <p class="eyebrow">EPUB → AUDIOBOOK</p>
-        <h1>让每一本书，<br /><em>开口说话。</em></h1>
-        <p class="lead">上传 EPUB，检查章节，用你自己的语音 API 生成可下载的分章节 MP3。有声书内容不会上传到本站服务器。</p>
+        <h1>Let every book<br /><em>find its voice.</em></h1>
+        <p class="lead">Upload an EPUB, review its chapters, and use your own text-to-speech API to create downloadable MP3s. Your book is never uploaded to our server.</p>
       </section>
 
       <section class="workspace">
@@ -29,9 +29,9 @@
           <span class="step-number">01</span>
           <div class="upload-copy">
             <div class="book-mark">EPUB</div>
-            <h2>选择一本电子书</h2>
-            <p>拖放文件到这里，或点击选择</p>
-            <button class="primary" id="pickFile">选择 EPUB</button>
+            <h2>Choose an ebook</h2>
+            <p>Drop an EPUB here, or browse your files</p>
+            <button class="primary" id="pickFile">Choose EPUB</button>
             <input id="fileInput" type="file" accept=".epub,application/epub+zip" hidden />
           </div>
         </div>
@@ -39,14 +39,14 @@
         <div class="book-panel hidden" id="bookPanel">
           <div class="book-heading">
             <div>
-              <p class="eyebrow">已载入</p>
-              <h2 id="bookTitle">未命名图书</h2>
+              <p class="eyebrow">Book loaded</p>
+              <h2 id="bookTitle">Untitled book</h2>
               <p id="bookMeta"></p>
             </div>
-            <button class="text-button" id="changeBook">更换文件</button>
+            <button class="text-button" id="changeBook">Change file</button>
           </div>
           <div class="chapter-toolbar">
-            <label><input type="checkbox" id="selectAll" checked /> 全选</label>
+            <label><input type="checkbox" id="selectAll" checked /> Select all</label>
             <span id="selectedSummary"></span>
           </div>
           <div class="chapter-list" id="chapterList"></div>
@@ -54,25 +54,25 @@
 
         <aside class="settings-panel">
           <span class="step-number">02</span>
-          <h2>设置声音</h2>
+          <h2>Voice settings</h2>
           <label class="field">
-            <span>API 地址</span>
+            <span>API endpoint</span>
             <input id="baseUrl" value="https://api.openai.com/v1" spellcheck="false" />
           </label>
           <label class="field">
-            <span>API Key <small>仅保存在本次标签页</small></span>
+            <span>API key <small>kept only in this tab</small></span>
             <div class="secret-wrap">
               <input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" />
-              <button id="toggleKey" aria-label="显示或隐藏 API Key">显示</button>
+              <button id="toggleKey" aria-label="Show or hide API key">Show</button>
             </div>
           </label>
           <div class="field-row">
             <label class="field">
-              <span>模型</span>
+              <span>Model</span>
               <input id="model" value="gpt-4o-mini-tts" />
             </label>
             <label class="field">
-              <span>声音</span>
+              <span>Voice</span>
               <select id="voice">
                 <option value="alloy">Alloy</option>
                 <option value="ash">Ash</option>
@@ -87,20 +87,20 @@
             </label>
           </div>
           <label class="field">
-            <span>朗读风格 <small>可选</small></span>
-            <textarea id="instructions" rows="3" placeholder="例如：自然、温暖，章节标题后稍作停顿。"></textarea>
+            <span>Reading style <small>optional</small></span>
+            <textarea id="instructions" rows="3" placeholder="For example: Warm and natural, with a short pause after chapter titles."></textarea>
           </label>
-          <button class="primary wide" id="generate" disabled>生成所选章节</button>
-          <button class="secondary wide hidden" id="cancel">停止生成</button>
-          <p class="fine-print">你的 API Key 会直接从浏览器发送给所填语音服务，不会写入代码或永久存储。</p>
+          <button class="primary wide" id="generate" disabled>Generate selected chapters</button>
+          <button class="secondary wide hidden" id="cancel">Stop generation</button>
+          <p class="fine-print">Your API key is sent directly from your browser to the selected speech service. It is never written to the code or stored permanently.</p>
         </aside>
       </section>
 
       <section class="progress-card hidden" id="progressCard">
         <div class="progress-heading">
           <div>
-            <p class="eyebrow">03 · 生成中</p>
-            <h2 id="progressTitle">准备音频…</h2>
+            <p class="eyebrow">03 · Generating</p>
+            <h2 id="progressTitle">Preparing audio…</h2>
           </div>
           <strong id="progressPercent">0%</strong>
         </div>
@@ -109,15 +109,15 @@
       </section>
 
       <section class="result-card hidden" id="resultCard">
-        <p class="eyebrow">完成</p>
-        <h2>有声书已经准备好了</h2>
+        <p class="eyebrow">Complete</p>
+        <h2>Your audiobook is ready</h2>
         <p id="resultSummary"></p>
-        <button class="primary" id="downloadZip">下载全部章节（ZIP）</button>
+        <button class="primary" id="downloadZip">Download all chapters (ZIP)</button>
         <div id="audioList" class="audio-list"></div>
       </section>
     </main>
 
-    <footer>SoundLeaf · 浏览器本地 EPUB 解析 · 请仅转换你有权使用的内容</footer>
+    <footer>SoundLeaf · Local EPUB processing · Convert only content you have the right to use</footer>
     <div class="toast hidden" id="toast"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
