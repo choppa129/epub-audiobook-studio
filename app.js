@@ -130,7 +130,9 @@ async function generateAudiobook() {
       const job = jobs[i];
       const chapter = state.chapters[job.chapterIndex];
       updateProgress(i, jobs.length, `${chapter.title}${job.partCount > 1 ? ` · Part ${job.partIndex + 1}/${job.partCount}` : ""}`);
-      const blob = await synthesize(job.text, key, state.controller.signal);
+      const blob = await synthesize(job.text, key, state.controller.signal, (seconds) => {
+        updateProgress(i, jobs.length, `Free-tier rate limit reached · Retrying in ${seconds}s`);
+      });
       if (!pieces.has(job.chapterIndex)) pieces.set(job.chapterIndex, []);
       pieces.get(job.chapterIndex).push(blob);
     }
@@ -150,7 +152,7 @@ async function generateAudiobook() {
   }
 }
 
-async function synthesize(input, key, signal) {
+async function synthesize(input, key, signal, onRetry) {
   const baseUrl = $("#baseUrl").value.trim().replace(/\/$/, "");
   const model = $("#model").value.trim();
   const part = { text: input };
@@ -164,20 +166,47 @@ async function synthesize(input, key, signal) {
       speechConfig: { voiceConfig: { voice: $("#voice").value } },
     },
   };
-  const response = await fetch(`${baseUrl}/models/${encodeURIComponent(model)}:generateContent`, {
-    method: "POST", signal,
-    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    let message = `${response.status} ${response.statusText}`;
-    try { const data = await response.json(); message = data.error?.message || message; } catch {}
-    throw new Error(message);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const response = await fetch(`${baseUrl}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST", signal,
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify(body),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      const audio = data.candidates?.[0]?.content?.parts?.find((item) => item.inlineData)?.inlineData;
+      if (!audio?.data) throw new Error("Gemini returned no audio. Check the model, voice, and content safety response.");
+      return base64ToBlob(audio.data, audio.mimeType || "audio/wav");
+    }
+    let data = null;
+    try { data = await response.json(); } catch {}
+    const message = data?.error?.message || `${response.status} ${response.statusText}`;
+    if (response.status !== 429 || attempt === 7) throw new Error(message);
+    const seconds = getRetrySeconds(data, message, attempt);
+    for (let remaining = seconds; remaining > 0; remaining--) {
+      onRetry?.(remaining);
+      await abortableDelay(1000, signal);
+    }
   }
-  const data = await response.json();
-  const audio = data.candidates?.[0]?.content?.parts?.find((item) => item.inlineData)?.inlineData;
-  if (!audio?.data) throw new Error("Gemini returned no audio. Check the model, voice, and content safety response.");
-  return base64ToBlob(audio.data, audio.mimeType || "audio/wav");
+  throw new Error("Gemini rate limit retries were exhausted");
+}
+
+function getRetrySeconds(data, message, attempt) {
+  const retryInfo = data?.error?.details?.find((detail) => String(detail["@type"] || "").endsWith("RetryInfo"));
+  const structured = Number.parseFloat(retryInfo?.retryDelay);
+  const textMatch = message.match(/retry in\s+([\d.]+)s/i);
+  const suggested = Number.isFinite(structured) ? structured : Number.parseFloat(textMatch?.[1]);
+  return Math.max(2, Math.ceil(Number.isFinite(suggested) ? suggested + 1 : Math.min(60, 5 * 2 ** attempt)));
+}
+
+function abortableDelay(milliseconds, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, milliseconds);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new DOMException("Generation stopped", "AbortError"));
+    }, { once: true });
+  });
 }
 
 function renderResults() {
